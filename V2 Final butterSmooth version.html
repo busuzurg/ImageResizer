@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pro Image Optimizer & Patcher</title>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --bg-color: #0e0e10;
+            --panel-bg: #18181b;
+            --card-bg: #222226;
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --text-main: #f4f4f5;
+            --text-muted: #a1a1aa;
+            --border: #2e2e33;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --badge-bg: #142822;
+        }
+
+        * {
+            box-sizing: border-box; margin: 0; padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: var(--bg-color); color: var(--text-main);
+            display: flex; height: 100vh; overflow: hidden;
+        }
+
+        .sidebar {
+            width: 380px; background-color: var(--panel-bg); border-right: 1px solid var(--border);
+            padding: 16px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; z-index: 10;
+        }
+
+        .sidebar::-webkit-scrollbar { width: 4px; }
+        .sidebar::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+
+        .workspace {
+            flex: 1; display: flex; flex-direction: column; padding: 16px;
+            background-color: #000; position: relative; overflow: hidden;
+        }
+
+        .canvas-container {
+            flex: 1; display: flex; align-items: center; justify-content: center;
+            border-radius: 12px; overflow: hidden; background-color: #121214;
+            min-height: 200px; position: relative;
+        }
+
+        /* Native Hardware Acceleration for buttery smooth UX */
+        .cropper-wrap-box, .cropper-canvas, .cropper-drag-box, .cropper-crop-box {
+            will-change: transform; transform: translateZ(0); backface-visibility: hidden;
+        }
+
+        .canvas-container img { display: block; max-width: 100%; max-height: 100%; }
+        #image { display: none; }
+
+        /* Full Screen Processing Shield */
+        .processing-overlay {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(10, 10, 10, 0.95); z-index: 100;
+            display: none; flex-direction: column; align-items: center;
+            justify-content: center; color: var(--success);
+            backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+            border-radius: 12px;
+        }
+        .processing-overlay i { font-size: 3rem; margin-bottom: 15px; }
+        .processing-overlay h3 { font-size: 1.2rem; font-weight: 600; color: #fff; margin-bottom: 5px; }
+        .processing-overlay p { font-size: 0.85rem; color: var(--text-muted); }
+
+        h2 { font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+        .control-group { background: var(--card-bg); padding: 12px; border-radius: 10px; border: 1px solid var(--border); transition: all 0.3s ease; }
+        .control-group.disabled { opacity: 0.35; pointer-events: none; }
+        
+        label { display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+
+        .btn {
+            background-color: #2f2f35; color: white; border: none; padding: 10px 14px; border-radius: 8px;
+            cursor: pointer; font-size: 0.85rem; font-weight: 500; transition: all 0.15s ease; display: inline-flex;
+            align-items: center; justify-content: center; gap: 6px; width: 100%; min-height: 42px;
+        }
+        .btn:active { transform: scale(0.98); }
+        .btn-primary { background-color: var(--primary); color: #fff; font-weight: 600; }
+        .btn-success { background-color: var(--success); color: #000; font-weight: 700; }
+        .btn-success:disabled { background-color: #26262a; color: #52525b; cursor: not-allowed; }
+
+        .btn-group { display: flex; gap: 6px; }
+        .btn-group .btn { flex: 1; padding: 8px 6px; font-size: 0.8rem; min-height: 38px; }
+        .btn.active { background-color: var(--primary); color: #fff; font-weight: 600; }
+
+        input[type="range"] { width: 100%; accent-color: var(--primary); height: 6px; cursor: pointer; }
+        input[type="file"] { display: none; }
+
+        .input-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: center; }
+        .input-field { display: flex; flex-direction: column; gap: 3px; position: relative; }
+        .input-field span { font-size: 0.7rem; color: var(--text-muted); }
+
+        .text-input, .select-input {
+            width: 100%; background: #141416; border: 1px solid var(--border); color: #fff;
+            padding: 9px 10px; border-radius: 8px; font-size: 0.9rem; outline: none; min-height: 40px; transition: border-color 0.2s;
+        }
+        .text-input:focus { border-color: var(--primary); }
+        
+        .clear-btn {
+            position: absolute; right: 8px; bottom: 10px; color: var(--text-muted);
+            cursor: pointer; font-size: 0.85rem; display: none; background: none; border: none;
+        }
+        .clear-btn:hover { color: #fff; }
+
+        .live-preview-box {
+            background: var(--badge-bg); border: 1px solid rgba(16, 185, 129, 0.35);
+            border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 6px;
+        }
+        .live-metric-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; }
+        .live-metric-value {
+            font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-weight: 700;
+            color: var(--success); font-size: 1.1rem; display: flex; align-items: center; gap: 6px;
+        }
+        .badge-padded {
+            font-size: 0.65rem; background: var(--warning); color: #000;
+            padding: 2px 6px; border-radius: 4px; font-weight: 800; letter-spacing: 0.5px;
+        }
+        .live-subtext { font-size: 0.75rem; color: #6ee7b7; }
+        
+        .toggle-switch { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 0.85rem; }
+        .toggle-switch input { width: 18px; height: 18px; accent-color: var(--primary); }
+
+        .empty-state { color: var(--text-muted); text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        .empty-state i { font-size: 2.8rem; opacity: 0.3; }
+
+        .mobile-export-bar { display: none; }
+
+        @media (max-width: 768px) {
+            body { flex-direction: column; height: 100%; min-height: 100vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+            .workspace { height: 42vh; min-height: 250px; padding: 10px; flex: none; }
+            .sidebar { width: 100%; border-right: none; border-top: 1px solid var(--border); padding: 14px 14px 90px 14px; overflow-y: visible; flex: none; }
+            #desktopExportBtn { display: none; }
+
+            .mobile-export-bar {
+                display: flex; position: fixed; bottom: 0; left: 0; right: 0; background: rgba(24, 24, 27, 0.95);
+                backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-top: 1px solid var(--border);
+                padding: 10px 16px; z-index: 999; gap: 12px; align-items: center;
+            }
+            .mobile-bar-info { flex: 1; display: flex; flex-direction: column; }
+            .mobile-bar-size { color: var(--success); font-weight: 700; font-size: 1.05rem; font-family: ui-monospace, monospace; }
+            .mobile-bar-res { color: var(--text-muted); font-size: 0.72rem; }
+            .mobile-export-btn { flex: 1.2; min-height: 44px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <h2><i class="fa-solid fa-bolt"></i> Instant Optimization Engine</h2>
+
+        <div class="control-group">
+            <input type="file" id="fileInput" accept="image/jpeg, image/png, image/webp">
+            <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
+                <i class="fa-solid fa-folder-open"></i> Choose Image
+            </button>
+        </div>
+
+        <div class="live-preview-box">
+            <div class="live-metric-row">
+                <span>Output Size:</span>
+                <span class="live-metric-value">
+                    <span id="estimatedSize">-- KB</span>
+                    <span id="paddedBadge" class="badge-padded" style="display: none;">PADDED</span>
+                </span>
+            </div>
+            <div class="live-metric-row">
+                <span class="live-subtext" id="estimatedResolution">0 × 0 px</span>
+                <span class="live-subtext" id="calculatedQualityTag">--%</span>
+            </div>
+            <div class="live-metric-row" style="border-top: 1px dashed rgba(16, 185, 129, 0.2); padding-top: 5px;">
+                <span style="font-size: 0.72rem; color: var(--text-muted);">Source File:</span>
+                <span style="font-size: 0.72rem; color: var(--text-muted);" id="originalSize">0 KB</span>
+            </div>
+        </div>
+
+        <div class="control-group disabled" id="cropControls">
+            <label>Aspect Ratio</label>
+            <div class="btn-group">
+                <button class="btn active" id="ratioFree" onclick="setAspectRatio(NaN, this)">Free</button>
+                <button class="btn" id="ratio1" onclick="setAspectRatio(1, this)">1:1</button>
+                <button class="btn" id="ratioDoc" onclick="setAspectRatio(3.5/4.5, this)">3.5:4.5</button>
+                <button class="btn" id="ratio169" onclick="setAspectRatio(16/9, this)">16:9</button>
+            </div>
+            <label style="margin-top: 8px;">Orientation</label>
+            <div class="btn-group">
+                <button class="btn" onclick="cropper.rotate(-90); triggerCalculation();"><i class="fa-solid fa-rotate-left"></i> 90°</button>
+                <button class="btn" onclick="cropper.rotate(90); triggerCalculation();"><i class="fa-solid fa-rotate-right"></i> 90°</button>
+                <button class="btn" onclick="flipHorizontal()"><i class="fa-solid fa-arrows-left-right"></i></button>
+            </div>
+        </div>
+
+        <div class="control-group disabled" id="dimensionControls">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <label style="margin-bottom: 0;">Target Resolution</label>
+                <button class="btn" style="width: auto; padding: 2px 8px; min-height: 26px; font-size: 0.72rem;" onclick="syncFromCropBox()">
+                    <i class="fa-solid fa-crop-simple"></i> From Crop
+                </button>
+            </div>
+            <div class="input-row">
+                <div class="input-field">
+                    <span>Width</span>
+                    <input type="number" id="widthInput" inputmode="decimal" class="text-input" placeholder="Auto" oninput="onDimensionChange('width')">
+                </div>
+                <div class="input-field">
+                    <span>Height</span>
+                    <input type="number" id="heightInput" inputmode="decimal" class="text-input" placeholder="Auto" oninput="onDimensionChange('height')">
+                </div>
+                <div class="input-field">
+                    <span>Unit</span>
+                    <select id="unitSelect" class="select-input" onchange="onUnitChange()">
+                        <option value="px">px</option>
+                        <option value="cm">cm</option>
+                    </select>
+                </div>
+            </div>
+            <div class="input-row" style="margin-top: 8px; grid-template-columns: 1fr 1fr;">
+                <div class="input-field">
+                    <span>Print DPI (cm)</span>
+                    <input type="number" id="dpiInput" inputmode="numeric" class="text-input" value="300" oninput="onDpiChange()">
+                </div>
+                <div style="display: flex; align-items: flex-end; padding-bottom: 8px;">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="lockAspectRatio" checked>
+                        <span>Lock Ratio</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="control-group disabled" id="compressionControls">
+            <label style="color: var(--success); margin-bottom: 8px;"><i class="fa-solid fa-wand-magic-sparkles"></i> Smart Compression</label>
+
+            <!-- Custom Exact Size Target -->
+            <div id="targetSizeContainer" style="margin-bottom: 12px; background: #1a1a1d; padding: 8px; border-radius: 8px; border: 1px solid rgba(16, 185, 129, 0.2);">
+                <div class="input-row" style="grid-template-columns: 2fr 1fr;">
+                    <div class="input-field">
+                        <span style="color: #6ee7b7;">Exact Target Size (Optional)</span>
+                        <input type="number" id="targetSizeValue" inputmode="decimal" class="text-input" placeholder="Blank for manual slider" oninput="onTargetModeInput()">
+                        <button class="clear-btn" id="clearTargetBtn" onclick="clearTargetSize()"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <div class="input-field">
+                        <span>Unit</span>
+                        <select id="targetSizeUnit" class="select-input" onchange="triggerCalculation()">
+                            <option value="KB" selected>KB</option>
+                            <option value="MB">MB</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Manual Fallback Slider -->
+            <div id="manualQualityContainer" style="transition: opacity 0.3s ease;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                    <label style="margin-bottom: 0;">Manual Quality</label>
+                    <span id="qualityLabel" style="font-size: 0.8rem; font-weight: bold;">80%</span>
+                </div>
+                <input type="range" id="qualitySlider" min="5" max="100" value="80" oninput="onQualitySliderChange()">
+            </div>
+        </div>
+
+        <button class="btn btn-success" id="desktopExportBtn" disabled onclick="exportImage()" style="margin-top: auto;">
+            <i class="fa-solid fa-download"></i> Save Image
+        </button>
+    </div>
+
+    <div class="workspace">
+        <div class="canvas-container" id="canvasContainer">
+            <div class="empty-state" id="emptyState">
+                <i class="fa-solid fa-laptop-code"></i>
+                <p>Import photo to optimize</p>
+            </div>
+            
+            <!-- Safe Processing Shield -->
+            <div class="processing-overlay" id="processingOverlay">
+                <i class="fa-solid fa-circle-notch fa-spin"></i>
+                <h3>Extracting High-Res...</h3>
+                <p>Generating perfect pixels offscreen.</p>
+            </div>
+
+            <img id="image" src="" alt="Workspace">
+        </div>
+    </div>
+
+    <div class="mobile-export-bar">
+        <div class="mobile-bar-info">
+            <span class="mobile-bar-size" id="mobileEstimatedSize">-- KB</span>
+            <span class="mobile-bar-res" id="mobileEstimatedRes">0 × 0 px</span>
+        </div>
+        <button class="btn btn-success mobile-export-btn" id="mobileExportBtn" disabled onclick="exportImage()">
+            <i class="fa-solid fa-download"></i> Save
+        </button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+
+    <script>
+        let cropper = null;
+        let originalFileName = "photo";
+        let calcTimer = null;
+        
+        // Proxy Architecture State
+        let originalHighResUrl = null;
+        let proxyUrl = null;
+        let proxyScale = 1;
+
+        let finalWidth = 0;
+        let finalHeight = 0;
+        let finalQuality = 0.8;
+
+        const fileInput = document.getElementById('fileInput');
+        const imageElement = document.getElementById('image');
+        const emptyState = document.getElementById('emptyState');
+        const processingOverlay = document.getElementById('processingOverlay');
+        const cropControls = document.getElementById('cropControls');
+        const dimensionControls = document.getElementById('dimensionControls');
+        const compressionControls = document.getElementById('compressionControls');
+        const desktopExportBtn = document.getElementById('desktopExportBtn');
+        const mobileExportBtn = document.getElementById('mobileExportBtn');
+        
+        const widthInput = document.getElementById('widthInput');
+        const heightInput = document.getElementById('heightInput');
+        const unitSelect = document.getElementById('unitSelect');
+        const dpiInput = document.getElementById('dpiInput');
+        const lockAspectRatio = document.getElementById('lockAspectRatio');
+        
+        const targetSizeValue = document.getElementById('targetSizeValue');
+        const targetSizeUnit = document.getElementById('targetSizeUnit');
+        const clearTargetBtn = document.getElementById('clearTargetBtn');
+        const manualQualityContainer = document.getElementById('manualQualityContainer');
+        const qualitySlider = document.getElementById('qualitySlider');
+        const qualityLabel = document.getElementById('qualityLabel');
+        
+        const estimatedSizeLabel = document.getElementById('estimatedSize');
+        const paddedBadge = document.getElementById('paddedBadge');
+        const estimatedResolutionLabel = document.getElementById('estimatedResolution');
+        const calculatedQualityTag = document.getElementById('calculatedQualityTag');
+        const originalSizeLabel = document.getElementById('originalSize');
+        const mobileEstimatedSize = document.getElementById('mobileEstimatedSize');
+        const mobileEstimatedRes = document.getElementById('mobileEstimatedRes');
+
+        function formatBytes(bytes) {
+            if (!bytes || bytes <= 0) return '0 KB';
+            const kb = bytes / 1024;
+            if (kb >= 1024) return (kb / 1024).toFixed(2) + ' MB';
+            return kb.toFixed(2) + ' KB';
+        }
+
+        function cmToPx(cm, dpi) { return Math.round((cm * dpi) / 2.54); }
+        function pxToCm(px, dpi) { return parseFloat(((px * 2.54) / dpi).toFixed(2)); }
+
+        // FILE LOAD & UI PROXY GENERATOR
+        fileInput.addEventListener('change', function (e) {
+            const files = e.target.files;
+            if (files && files.length > 0) {
+                const file = files[0];
+                originalFileName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+                originalSizeLabel.textContent = formatBytes(file.size);
+
+                // Prevent memory leaks
+                if (originalHighResUrl) URL.revokeObjectURL(originalHighResUrl);
+                if (proxyUrl) URL.revokeObjectURL(proxyUrl);
+
+                originalHighResUrl = URL.createObjectURL(file);
+
+                const img = new Image();
+                img.onload = () => {
+                    // Maximum visual proxy size for 60FPS UI dragging
+                    const MAX_PROXY_DIM = 1600; 
+                    let w = img.naturalWidth;
+                    let h = img.naturalHeight;
+
+                    if (w > MAX_PROXY_DIM || h > MAX_PROXY_DIM) {
+                        const ratio = Math.min(MAX_PROXY_DIM / w, MAX_PROXY_DIM / h);
+                        w = Math.round(w * ratio);
+                        h = Math.round(h * ratio);
+
+                        const pCanvas = document.createElement('canvas');
+                        pCanvas.width = w; pCanvas.height = h;
+                        const pCtx = pCanvas.getContext('2d');
+                        pCtx.imageSmoothingEnabled = true;
+                        pCtx.imageSmoothingQuality = 'high';
+                        pCtx.drawImage(img, 0, 0, w, h);
+
+                        pCanvas.toBlob(blob => {
+                            proxyUrl = URL.createObjectURL(blob);
+                            proxyScale = img.naturalWidth / w; // Crucial tracking for Export mapping
+                            initUI(proxyUrl);
+                        }, 'image/jpeg', 0.95);
+                    } else {
+                        proxyUrl = originalHighResUrl;
+                        proxyScale = 1;
+                        initUI(proxyUrl);
+                    }
+                };
+                img.src = originalHighResUrl;
+            }
+            fileInput.value = '';
+        });
+
+        function initUI(url) {
+            emptyState.style.display = 'none';
+            imageElement.style.display = 'block';
+            imageElement.src = url;
+
+            if (cropper) cropper.destroy();
+            cropper = new Cropper(imageElement, {
+                viewMode: 1, dragMode: 'move', autoCropArea: 0.95, restore: false,
+                guides: true, center: true, responsive: true, cropBoxMovable: true,
+                cropBoxResizable: true, toggleDragModeOnDblclick: false,
+                
+                // Triggers purely when finger lifts, 100% decoupling math from DOM frame renders.
+                cropend: () => triggerCalculation(),
+                zoom: () => triggerCalculation()
+            });
+
+            setTimeout(triggerCalculation, 150);
+
+            cropControls.classList.remove('disabled');
+            dimensionControls.classList.remove('disabled');
+            compressionControls.classList.remove('disabled');
+            desktopExportBtn.disabled = false; mobileExportBtn.disabled = false;
+        }
+
+        // SYNC FUNCTIONS
+        function setAspectRatio(ratio, btnElement) {
+            if (!cropper) return;
+            cropper.setAspectRatio(ratio);
+            document.querySelectorAll('#cropControls .btn-group .btn').forEach(b => b.classList.remove('active'));
+            if (btnElement) btnElement.classList.add('active');
+            triggerCalculation();
+        }
+        
+        function flipHorizontal() {
+            if (!cropper) return;
+            cropper.scaleX(cropper.getData().scaleX === -1 ? 1 : -1);
+            triggerCalculation();
+        }
+
+        function syncFromCropBox() {
+            if (!cropper) return;
+            const cropData = cropper.getData(true);
+            const unit = unitSelect.value;
+            const dpi = parseFloat(dpiInput.value) || 300;
+            
+            // Map the proxy visual box directly back to the physical pixels
+            const trueW = cropData.width * proxyScale;
+            const trueH = cropData.height * proxyScale;
+
+            if (unit === 'px') {
+                widthInput.value = Math.round(trueW);
+                heightInput.value = Math.round(trueH);
+            } else {
+                widthInput.value = pxToCm(trueW, dpi);
+                heightInput.value = pxToCm(trueH, dpi);
+            }
+            triggerCalculation();
+        }
+
+        function onUnitChange() {
+            const unit = unitSelect.value; const dpi = parseFloat(dpiInput.value) || 300;
+            const w = parseFloat(widthInput.value); const h = parseFloat(heightInput.value);
+            if (unit === 'cm') {
+                if (w) widthInput.value = pxToCm(w, dpi);
+                if (h) heightInput.value = pxToCm(h, dpi);
+            } else {
+                if (w) widthInput.value = cmToPx(w, dpi);
+                if (h) heightInput.value = cmToPx(h, dpi);
+            }
+            triggerCalculation();
+        }
+        
+        function onDpiChange() { if (unitSelect.value === 'cm') triggerCalculation(); }
+        
+        function onDimensionChange(changedField) {
+            if (!cropper) return;
+            if (lockAspectRatio.checked) {
+                const ratio = cropper.getData().width / cropper.getData().height;
+                if (changedField === 'width' && widthInput.value) {
+                    heightInput.value = (parseFloat(widthInput.value) / ratio).toFixed(unitSelect.value === 'cm' ? 2 : 0);
+                } else if (changedField === 'height' && heightInput.value) {
+                    widthInput.value = (parseFloat(heightInput.value) * ratio).toFixed(unitSelect.value === 'cm' ? 2 : 0);
+                }
+            }
+            triggerCalculation();
+        }
+
+        function onTargetModeInput() {
+            if (targetSizeValue.value && parseFloat(targetSizeValue.value) > 0) {
+                manualQualityContainer.style.opacity = '0.3';
+                manualQualityContainer.style.pointerEvents = 'none';
+                clearTargetBtn.style.display = 'block';
+            } else {
+                manualQualityContainer.style.opacity = '1';
+                manualQualityContainer.style.pointerEvents = 'auto';
+                clearTargetBtn.style.display = 'none';
+            }
+            triggerCalculation();
+        }
+        
+        function clearTargetSize() {
+            targetSizeValue.value = "";
+            onTargetModeInput();
+        }
+        
+        function onQualitySliderChange() {
+            qualityLabel.textContent = qualitySlider.value + '%';
+            triggerCalculation();
+        }
+
+        function getTargetPixelDimensions() {
+            if (!cropper) return { width: 0, height: 0 };
+            const cropData = cropper.getData(true);
+            const unit = unitSelect.value; const dpi = parseFloat(dpiInput.value) || 300;
+            let targetW = parseFloat(widthInput.value); let targetH = parseFloat(heightInput.value);
+
+            if (!targetW && !targetH) {
+                return { 
+                    width: Math.round(cropData.width * proxyScale), 
+                    height: Math.round(cropData.height * proxyScale) 
+                };
+            }
+
+            if (unit === 'cm') {
+                if (targetW) targetW = cmToPx(targetW, dpi);
+                if (targetH) targetH = cmToPx(targetH, dpi);
+            } else {
+                if (targetW) targetW = Math.round(targetW);
+                if (targetH) targetH = Math.round(targetH);
+            }
+
+            const ratio = cropData.width / cropData.height;
+            if (targetW && !targetH) targetH = Math.round(targetW / ratio);
+            if (!targetW && targetH) targetW = Math.round(targetH * ratio);
+            
+            return { width: Math.max(16, targetW), height: Math.max(16, targetH) };
+        }
+
+        function triggerCalculation() {
+            if (!cropper) return;
+            clearTimeout(calcTimer);
+            calcTimer = setTimeout(runLiveEstimation, 40);
+        }
+
+        function runLiveEstimation() {
+            if (!cropper) return;
+            const dims = getTargetPixelDimensions();
+            const targetW = dims.width; const targetH = dims.height;
+            
+            const isTargetMode = targetSizeValue.value && parseFloat(targetSizeValue.value) > 0;
+            
+            const scale = Math.min(1, 960 / Math.max(targetW, targetH));
+            const testW = Math.max(16, Math.round(targetW * scale));
+            const testH = Math.max(16, Math.round(targetH * scale));
+            
+            const testCanvas = cropper.getCroppedCanvas({ width: testW, height: testH, imageSmoothingEnabled: false });
+            if (!testCanvas) return;
+
+            const areaRatio = (targetW * targetH) / (testW * testH);
+            const JPEG_OVERHEAD = 2500; 
+
+            if (!isTargetMode) {
+                finalQuality = parseInt(qualitySlider.value, 10) / 100;
+                finalWidth = targetW; finalHeight = targetH;
+                testCanvas.toBlob(function(blob) {
+                    const payload = Math.max(1, blob.size - JPEG_OVERHEAD);
+                    let estBytes = Math.round((payload * areaRatio) + JPEG_OVERHEAD);
+                    if (finalQuality === 1 && areaRatio > 10) estBytes = Math.round(estBytes * 0.85);
+                    updateDisplay(estBytes, targetW, targetH, qualitySlider.value);
+                }, 'image/jpeg', finalQuality);
+            } else {
+                const targetBytes = parseFloat(targetSizeValue.value) * (targetSizeUnit.value === 'MB' ? 1048576 : 1024);
+                
+                testCanvas.toBlob(function(refBlob) {
+                    const payload = Math.max(1, refBlob.size - JPEG_OVERHEAD);
+                    const estAtRef = (payload * areaRatio) + JPEG_OVERHEAD;
+                    const maxEstSize = (payload * (1.0 / 0.75) * areaRatio) + JPEG_OVERHEAD;
+
+                    let chosenQuality = 0.8; let calcW = targetW; let calcH = targetH;
+
+                    if (maxEstSize < targetBytes) {
+                        chosenQuality = 1.0;
+                        finalWidth = calcW; finalHeight = calcH; finalQuality = 1.0;
+                        updateDisplay(targetBytes, calcW, calcH, 100, true);
+                        return;
+                    }
+
+                    if (estAtRef > targetBytes) {
+                        const ratio = targetBytes / estAtRef;
+                        if (ratio >= 0.4) { chosenQuality = Math.max(0.1, 0.75 * Math.pow(ratio, 1.25)); } 
+                        else {
+                            chosenQuality = 0.45;
+                            const dimScale = Math.min(1, Math.max(0.15, Math.sqrt(ratio / 0.6)));
+                            calcW = Math.round(targetW * dimScale); calcH = Math.round(targetH * dimScale);
+                        }
+                    } else {
+                        chosenQuality = Math.min(0.96, 0.75 + ((targetBytes / estAtRef) - 1) * 0.15);
+                    }
+
+                    finalWidth = calcW; finalHeight = calcH; finalQuality = parseFloat(chosenQuality.toFixed(2));
+                    const finalEst = Math.min(targetBytes, Math.round((payload * (chosenQuality / 0.75) * ((calcW * calcH) / (testW * testH))) + JPEG_OVERHEAD));
+                    updateDisplay(finalEst, finalWidth, finalHeight, Math.round(finalQuality * 100));
+                }, 'image/jpeg', 0.75);
+            }
+        }
+
+        function updateDisplay(bytes, w, h, qualityPercent, showPadded = false) {
+            const formattedSize = formatBytes(bytes);
+            const dpi = parseFloat(dpiInput.value) || 300;
+            const resText = `${w} × ${h} px (${pxToCm(w, dpi)} × ${pxToCm(h, dpi)} cm)`;
+
+            estimatedSizeLabel.textContent = formattedSize;
+            paddedBadge.style.display = showPadded ? 'inline-block' : 'none';
+            estimatedResolutionLabel.textContent = resText;
+            calculatedQualityTag.textContent = `Quality: ${qualityPercent}%`;
+
+            mobileEstimatedSize.textContent = formattedSize + (showPadded ? ' (Pad)' : '');
+            mobileEstimatedRes.textContent = `${w} × ${h} px`;
+        }
+
+        function getBlobAsync(canvas, quality) {
+            return new Promise((resolve, reject) => {
+                try {
+                    canvas.toBlob(blob => {
+                        if (blob) resolve(blob);
+                        else reject(new Error("Canvas rendering failed. Memory limits exceeded."));
+                    }, 'image/jpeg', quality);
+                } catch(e) {
+                    reject(e);
+                }
+            });
+        }
+
+        /* -------------------------------------------------------------
+           BRIDGE ARCHITECTURE: OFFSCREEN HIGH-RES RENDER PIPELINE
+        ---------------------------------------------------------------- */
+        async function exportImage() {
+            if (!cropper) return;
+
+            try {
+                // 1. Shield UI from DOM freezing
+                processingOverlay.style.display = 'flex';
+                await new Promise(r => setTimeout(r, 60)); // Yield to allow browser paint
+
+                // 2. Save perfectly aligned Proxy UI Coordinates
+                const proxyCropData = cropper.getData();
+
+                // 3. Mathematical mapping scaling logic
+                const highResData = {
+                    x: proxyCropData.x * proxyScale,
+                    y: proxyCropData.y * proxyScale,
+                    width: proxyCropData.width * proxyScale,
+                    height: proxyCropData.height * proxyScale,
+                    rotate: proxyCropData.rotate,
+                    scaleX: proxyCropData.scaleX,
+                    scaleY: proxyCropData.scaleY
+                };
+
+                // 4. Temporarily load the massive 42MP file into the invisible background
+                if (proxyScale > 1) {
+                    const readyPromise = new Promise(resolve => {
+                        let isResolved = false;
+                        const handler = () => { if (isResolved) return; isResolved = true; imageElement.removeEventListener('ready', handler); resolve(); };
+                        imageElement.addEventListener('ready', handler);
+                        setTimeout(handler, 1500); // 1.5s Crash override failsafe
+                    });
+                    
+                    // The 'false' argument ensures CropperJS drops the microscopic UI bounding box before scaling up
+                    cropper.replace(originalHighResUrl, false);
+                    await readyPromise;
+                    cropper.setData(highResData);
+                }
+
+                // 5. Slice flawless pixels directly from source
+                const finalCanvas = cropper.getCroppedCanvas({
+                    width: finalWidth, height: finalHeight,
+                    imageSmoothingEnabled: true, imageSmoothingQuality: 'high'
+                });
+
+                if(!finalCanvas) throw new Error("Canvas generation aborted by browser.");
+
+                const isTargetMode = targetSizeValue.value && parseFloat(targetSizeValue.value) > 0;
+                let finalExportBlob = await getBlobAsync(finalCanvas, finalQuality);
+
+                // 6. Execute Analytics, Downscaling, and Exact Byte Padding
+                if (isTargetMode) {
+                    const targetBytes = parseFloat(targetSizeValue.value) * (targetSizeUnit.value === 'MB' ? 1048576 : 1024);
+                    
+                    if (finalExportBlob.size > targetBytes) {
+                        const errorRatio = targetBytes / finalExportBlob.size;
+
+                        if (errorRatio > 0.70) {
+                            let safeQuality = Math.max(0.05, finalQuality * (errorRatio - 0.15));
+                            finalExportBlob = await getBlobAsync(finalCanvas, safeQuality);
+                        } else {
+                            const areaScale = Math.max(0.1, errorRatio * 0.85); 
+                            const dimScale = Math.sqrt(areaScale);
+                            
+                            const safeW = Math.max(16, Math.round(finalWidth * dimScale));
+                            const safeH = Math.max(16, Math.round(finalHeight * dimScale));
+
+                            const safeCanvas = document.createElement('canvas');
+                            safeCanvas.width = safeW; safeCanvas.height = safeH;
+                            safeCanvas.getContext('2d').drawImage(finalCanvas, 0, 0, safeW, safeH);
+
+                            finalExportBlob = await getBlobAsync(safeCanvas, Math.max(0.1, finalQuality * 0.9));
+                            finalWidth = safeW;
+                            finalHeight = safeH;
+                        }
+                    }
+                    
+                    if (finalExportBlob.size < targetBytes) {
+                        const bytesNeeded = Math.floor(targetBytes - finalExportBlob.size);
+                        const paddingData = new Uint8Array(bytesNeeded);
+                        finalExportBlob = new Blob([finalExportBlob, paddingData], { type: 'image/jpeg' });
+                    }
+                }
+
+                // 7. Instant Download
+                const url = URL.createObjectURL(finalExportBlob);
+                const a = document.createElement('a'); a.style.display = 'none'; a.href = url;
+                const sizeStr = formatBytes(finalExportBlob.size).replace(/\s+/g, '');
+                a.download = `${originalFileName}_${finalWidth}x${finalHeight}_${sizeStr}.jpg`;
+                document.body.appendChild(a); a.click();
+
+                setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+
+            } catch (error) {
+                console.error("Export Error:", error);
+                alert("Memory limit reached. Please try outputting at a slightly smaller resolution.");
+            } finally {
+                // 8. Safely revert UI back to smooth 1080p proxy map
+                if (proxyScale > 1 && cropper) {
+                    const restorePromise = new Promise(resolve => {
+                        let isResolved = false;
+                        const handler = () => { if (isResolved) return; isResolved = true; imageElement.removeEventListener('ready', handler); resolve(); };
+                        imageElement.addEventListener('ready', handler);
+                        setTimeout(handler, 1000); 
+                    });
+                    
+                    cropper.replace(proxyUrl, false);
+                    await restorePromise;
+                }
+                
+                processingOverlay.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>

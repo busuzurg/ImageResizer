@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro Image Compressor & Cropper</title>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --bg-color: #121212;
+            --panel-bg: #1e1e1e;
+            --primary: #bb86fc;
+            --primary-hover: #9965f4;
+            --text-main: #ffffff;
+            --text-muted: #a0a0a0;
+            --border: #333333;
+            --success: #03dac6;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            width: 350px;
+            background-color: var(--panel-bg);
+            border-right: 1px solid var(--border);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+            overflow-y: auto;
+        }
+
+        .workspace {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            background-color: #0a0a0a;
+            position: relative;
+        }
+
+        .canvas-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            background-color: var(--panel-bg);
+            min-height: 300px; /* Ensures container doesn't collapse */
+        }
+
+        /* Essential for Cropper.js */
+        .canvas-container img {
+            display: block;
+            max-width: 100%;
+            height: auto;
+        }
+
+        #image { display: none; } /* Hidden until loaded */
+
+        h2 { font-size: 1.2rem; font-weight: 600; margin-bottom: 15px; display: flex; align-items: center; gap: 10px; }
+        .control-group { background: #252525; padding: 15px; border-radius: 10px; border: 1px solid var(--border); }
+        label { display: block; font-size: 0.9rem; color: var(--text-muted); margin-bottom: 8px; }
+
+        .btn {
+            background-color: #333; color: white; border: none; padding: 10px 15px; border-radius: 6px;
+            cursor: pointer; font-size: 0.9rem; transition: all 0.2s; display: inline-flex;
+            align-items: center; justify-content: center; gap: 8px; width: 100%;
+        }
+        .btn:hover { background-color: #444; }
+        .btn-primary { background-color: var(--primary); color: #000; font-weight: bold; }
+        .btn-primary:hover { background-color: var(--primary-hover); }
+        .btn-success { background-color: var(--success); color: #000; font-weight: bold; margin-top: auto; }
+        .btn-success:hover { background-color: #00b3a3; }
+        .btn-group { display: flex; gap: 10px; margin-bottom: 10px; }
+        .btn-group .btn { flex: 1; }
+
+        input[type="range"] { width: 100%; accent-color: var(--primary); margin-bottom: 5px; }
+        input[type="file"] { display: none; }
+
+        .stats-bar { display: flex; justify-content: space-between; padding: 10px 0; font-size: 0.9rem; border-top: 1px solid var(--border); margin-top: 15px; }
+        .empty-state { color: var(--text-muted); text-align: center; display: flex; flex-direction: column; align-items: center; gap: 15px; }
+        .empty-state i { font-size: 3rem; opacity: 0.5; }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <h2><i class="fa-solid fa-image"></i> Compressor Setup</h2>
+
+        <div class="control-group">
+            <input type="file" id="fileInput" accept="image/jpeg, image/png, image/webp">
+            <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
+                <i class="fa-solid fa-folder-open"></i> Import Image
+            </button>
+        </div>
+
+        <div class="control-group" id="cropControls" style="opacity: 0.5; pointer-events: none;">
+            <label>Aspect Ratio</label>
+            <div class="btn-group">
+                <button class="btn" onclick="setAspectRatio(NaN)">Free</button>
+                <button class="btn" onclick="setAspectRatio(1)">1:1</button>
+                <button class="btn" onclick="setAspectRatio(16/9)">16:9</button>
+            </div>
+            
+            <label style="margin-top: 15px;">Transform</label>
+            <div class="btn-group">
+                <button class="btn" onclick="cropper.rotate(-90)"><i class="fa-solid fa-rotate-left"></i></button>
+                <button class="btn" onclick="cropper.rotate(90)"><i class="fa-solid fa-rotate-right"></i></button>
+                <button class="btn" onclick="cropper.scaleX(cropper.getData().scaleX === -1 ? 1 : -1)"><i class="fa-solid fa-left-right"></i></button>
+            </div>
+        </div>
+
+        <div class="control-group" id="exportControls" style="opacity: 0.5; pointer-events: none;">
+            <label>JPEG Quality (<span id="qualityLabel">80</span>%)</label>
+            <input type="range" id="qualitySlider" min="10" max="100" value="80" oninput="updateQualityLabel()">
+            
+            <label style="margin-top: 15px;">Max Output Width (px) - Optional</label>
+            <input type="number" id="maxWidth" class="btn" style="text-align: left; background: #1a1a1a; border: 1px solid #333;" placeholder="e.g. 1920">
+
+            <div class="stats-bar">
+                <span>Original Size:</span>
+                <span id="originalSize">0 KB</span>
+            </div>
+        </div>
+
+        <button class="btn btn-success" id="exportBtn" disabled onclick="exportImage()">
+            <i class="fa-solid fa-download"></i> Save to Storage
+        </button>
+    </div>
+
+    <div class="workspace">
+        <div class="canvas-container" id="canvasContainer">
+            <div class="empty-state" id="emptyState">
+                <i class="fa-regular fa-images"></i>
+                <p>Import an image to start cropping</p>
+            </div>
+            <img id="image" src="" alt="Workspace">
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+    
+    <script>
+        let cropper;
+        let originalFileName = "image";
+        
+        const fileInput = document.getElementById('fileInput');
+        const imageElement = document.getElementById('image');
+        const emptyState = document.getElementById('emptyState');
+        const cropControls = document.getElementById('cropControls');
+        const exportControls = document.getElementById('exportControls');
+        const exportBtn = document.getElementById('exportBtn');
+        const qualitySlider = document.getElementById('qualitySlider');
+        const qualityLabel = document.getElementById('qualityLabel');
+        const originalSizeLabel = document.getElementById('originalSize');
+        const maxWidthInput = document.getElementById('maxWidth');
+
+        function updateQualityLabel() {
+            qualityLabel.textContent = qualitySlider.value;
+        }
+
+        // FIX: Use URL.createObjectURL and wait for image to load before cropping
+        fileInput.addEventListener('change', function (e) {
+            const files = e.target.files;
+            if (files && files.length > 0) {
+                const file = files[0];
+                originalFileName = file.name.split('.')[0];
+                
+                const sizeInKB = (file.size / 1024).toFixed(2);
+                const sizeInMB = (file.size / (1024 * 1024)).toFixed(2);
+                originalSizeLabel.textContent = file.size > 1024 * 1024 ? `${sizeInMB} MB` : `${sizeInKB} KB`;
+
+                // Use robust object URL instead of FileReader
+                const objectURL = URL.createObjectURL(file);
+                
+                emptyState.style.display = 'none';
+                imageElement.style.display = 'block'; // Make sure it's visible for Cropper math
+                imageElement.src = objectURL;
+
+                // WAIT for image to fully draw before initializing Cropper
+                imageElement.onload = function() {
+                    if (cropper) {
+                        cropper.destroy();
+                    }
+                    
+                    cropper = new Cropper(imageElement, {
+                        viewMode: 1,
+                        dragMode: 'move',
+                        autoCropArea: 1,
+                        restore: false,
+                        guides: true,
+                        center: true,
+                        highlight: false,
+                        cropBoxMovable: true,
+                        cropBoxResizable: true,
+                        toggleDragModeOnDblclick: false,
+                    });
+
+                    cropControls.style.opacity = '1';
+                    cropControls.style.pointerEvents = 'auto';
+                    exportControls.style.opacity = '1';
+                    exportControls.style.pointerEvents = 'auto';
+                    exportBtn.disabled = false;
+                };
+            }
+            fileInput.value = '';
+        });
+
+        function setAspectRatio(ratio) {
+            if (cropper) cropper.setAspectRatio(ratio);
+        }
+
+        // Standard browser download logic
+        function exportImage() {
+            if (!cropper) return;
+
+            let extractOptions = {
+                imageSmoothingEnabled: true,
+                imageSmoothingQuality: 'high'
+            };
+
+            const maxWidth = parseInt(maxWidthInput.value);
+            if (maxWidth && maxWidth > 0) {
+                const cropData = cropper.getData();
+                if (cropData.width > maxWidth) {
+                    extractOptions.width = maxWidth;
+                    extractOptions.height = (maxWidth / cropData.width) * cropData.height;
+                }
+            }
+
+            const canvas = cropper.getCroppedCanvas(extractOptions);
+            const quality = parseInt(qualitySlider.value) / 100;
+
+            // Generate Blob and trigger automatic storage download
+            canvas.toBlob(function (blob) {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                
+                // Generates name like: myphoto_compressed_80.jpg
+                a.download = `${originalFileName}_compressed_${qualitySlider.value}.jpg`; 
+                
+                document.body.appendChild(a);
+                a.click(); // This forces the browser to download to device storage
+                
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 100);
+                
+            }, 'image/jpeg', quality);
+        }
+    </script>
+</body>
+</html>
